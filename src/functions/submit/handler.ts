@@ -12,6 +12,7 @@ import { GSheetFormSchema, SubmitSchema, submitSchema } from "./schema";
 import { SafeParseReturnType } from "zod";
 import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
+import { PublishCommand, SNSClient } from "@aws-sdk/client-sns";
 
 const form = async (event: APIGatewayProxyEvent) => {
   const origin = event.headers.origin ?? "https://giginthe.garden";
@@ -176,6 +177,26 @@ const form = async (event: APIGatewayProxyEvent) => {
     row.assign({ ...validatedForm.data, paid: "No" });
   } else {
     await sheet.addRow({ ...validatedForm.data, paid: "No" });
+  }
+
+  /*
+    * SNS Notification
+    */
+  const snsClient = new SNSClient({});
+  const snsCommand = new PublishCommand({
+    TopicArn: process.env.SNS_TOPIC_ARN,
+    Message: `New form submission from ${validatedForm.data.name} <${validatedForm.data.email}> with ${validatedForm.data.adults} adults and ${validatedForm.data.children} children`,
+  });
+
+  try {
+    await snsClient.send(snsCommand);
+  } catch (error: any) {
+    console.error("Failed to send SNS message", error);
+    return formatJSONError({
+      error: true,
+      message: "Failed to send SNS message",
+      details: error.message,
+    });
   }
 
   /*
