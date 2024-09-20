@@ -14,6 +14,9 @@ const serverlessConfiguration: AWS = {
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1",
       NODE_OPTIONS: "--enable-source-maps --stack-trace-limit=1000",
       DYNAMODB_TABLE: "giginthegarden-form-submissions",
+      GOOGLE_SA_EMAIL: "${ssm:/gitg/gsheet/email}",
+      GOOGLE_SA_KEY: "${ssm:/gitg/gsheet/key}",
+      GOOGLE_SHEET_ID: "1O5dUpi6eNKIR6yI8ErjLZLKBmZcfxebV-DmItxr56Sc",
     },
     iamRoleStatements: [
       {

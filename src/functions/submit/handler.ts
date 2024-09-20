@@ -8,11 +8,12 @@ import {
   PutItemCommand,
   GetItemCommandOutput,
 } from "@aws-sdk/client-dynamodb";
-import { SubmitSchema, submitSchema } from "./schema";
+import { GSheetFormSchema, SubmitSchema, submitSchema } from "./schema";
 import { SafeParseReturnType } from "zod";
+import { GoogleSpreadsheet } from "google-spreadsheet";
+import { JWT } from "google-auth-library";
 
 const form = async (event: APIGatewayProxyEvent) => {
-  // Try to decode x-www-form-urlencoded body to object, return error if failed. Log it for debugging.
   let parsedForm: URLSearchParams;
   let validatedForm: SafeParseReturnType<SubmitSchema, SubmitSchema>;
 
@@ -20,8 +21,8 @@ const form = async (event: APIGatewayProxyEvent) => {
    * Validation
    */
   try {
-    parsedForm = new URLSearchParams(event.body);
-  } catch (error) {
+    parsedForm = new URLSearchParams(event.body ?? "");
+  } catch (error: any) {
     console.error("Failed to parse form data", error);
     return formatJSONResponse({
       error: true,
@@ -54,7 +55,7 @@ const form = async (event: APIGatewayProxyEvent) => {
   let existingItem: GetItemCommandOutput;
   try {
     existingItem = await dynamoClient.send(getCommand);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Failed to get item from DynamoDB", error);
     return formatJSONResponse({
       error: true,
@@ -68,10 +69,9 @@ const form = async (event: APIGatewayProxyEvent) => {
     // First check if the item is already the same as the new form data, no need to update
     if (
       existingItem.Item.name.S === validatedForm.data.name &&
-      parseInt(existingItem.Item.adults.N) === validatedForm.data.adults &&
-      parseInt(existingItem.Item.children.N) === validatedForm.data.children &&
-      existingItem.Item["anything-else"].S ===
-        validatedForm.data["anything-else"]
+      parseInt(existingItem.Item.adults.N!) === validatedForm.data.adults &&
+      parseInt(existingItem.Item.children.N!) === validatedForm.data.children &&
+      existingItem.Item.anythingElse.S === validatedForm.data.anythingElse
     ) {
       return formatJSONResponse({
         message: "No changes detected",
@@ -84,24 +84,23 @@ const form = async (event: APIGatewayProxyEvent) => {
         email: { S: validatedForm.data.email },
       },
       UpdateExpression:
-        "SET #name = :name, adults = :adults, children = :children, #anythingElse = :anythingElse, history = list_append(history, :history)",
+        "SET #name = :name, adults = :adults, children = :children, anythingElse = :anythingElse, history = list_append(history, :history)",
       ExpressionAttributeNames: {
         "#name": "name",
-        "#anythingElse": "anything-else",
       },
       ExpressionAttributeValues: {
         ":name": { S: validatedForm.data.name },
-        ":adults": { N: validatedForm.data.adults.toString() },
-        ":children": { N: validatedForm.data.children.toString() },
-        ":anythingElse": { S: validatedForm.data["anything-else"] },
+        ":adults": { N: validatedForm.data.adults?.toString() },
+        ":children": { N: validatedForm.data.children?.toString() },
+        ":anythingElse": { S: validatedForm.data.anythingElse },
         ":history": {
           L: [
             {
               M: {
-                name: { S: existingItem.Item.name.S },
-                adults: { N: existingItem.Item.adults.N },
-                children: { N: existingItem.Item.children.N },
-                "anything-else": { S: existingItem.Item["anything-else"].S },
+                name: { S: existingItem.Item.name.S! },
+                adults: { N: existingItem.Item.adults.N! },
+                children: { N: existingItem.Item.children.N! },
+                anythingElse: { S: existingItem.Item.anythingElse.S! },
                 replacedAt: { S: new Date().toISOString() },
               },
             },
@@ -112,7 +111,7 @@ const form = async (event: APIGatewayProxyEvent) => {
 
     try {
       await dynamoClient.send(updateCommand);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update item in DynamoDB", error);
       return formatJSONResponse({
         error: true,
@@ -128,7 +127,7 @@ const form = async (event: APIGatewayProxyEvent) => {
         name: { S: validatedForm.data.name },
         adults: { N: validatedForm.data.adults.toString() },
         children: { N: validatedForm.data.children.toString() },
-        "anything-else": { S: validatedForm.data["anything-else"] },
+        anythingElse: { S: validatedForm.data.anythingElse },
         history: {
           L: [],
         },
@@ -137,7 +136,7 @@ const form = async (event: APIGatewayProxyEvent) => {
 
     try {
       await dynamoClient.send(putCommand);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to put item in DynamoDB", error);
       return formatJSONResponse({
         error: true,
@@ -148,10 +147,32 @@ const form = async (event: APIGatewayProxyEvent) => {
   }
 
   /*
+   * Google Sheets
+   */
+  const jwt = new JWT({
+    email: process.env.GOOGLE_SA_EMAIL,
+    key: process.env.GOOGLE_SA_KEY,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID!, jwt);
+  await doc.loadInfo(); // loads sheets
+
+  const sheet = doc.sheetsByTitle["Website Form Responses"];
+  const rows = await sheet.getRows<GSheetFormSchema>();
+  const row = rows.find((r) => r.get("email") === validatedForm.data.email);
+
+  if (row) {
+    row.assign({ ...validatedForm.data, paid: "No" });
+  } else {
+    await sheet.addRow({ ...validatedForm.data, paid: "No" });
+  }
+
+  /*
    * Response
    */
   return formatJSONResponse({
     message: "Form submitted",
+    docTitle: doc.title,
   });
 };
 
