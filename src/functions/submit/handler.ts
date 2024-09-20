@@ -1,4 +1,4 @@
-import { formatJSONResponse } from "@libs/api-gateway";
+import { formatJSONError, formatJSONRedirect } from "@libs/api-gateway";
 import { middyfy } from "@libs/lambda";
 import { APIGatewayProxyEvent } from "aws-lambda";
 import {
@@ -14,6 +14,7 @@ import { GoogleSpreadsheet } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 
 const form = async (event: APIGatewayProxyEvent) => {
+  const origin = event.headers.origin ?? "https://giginthe.garden";
   let parsedForm: URLSearchParams;
   let validatedForm: SafeParseReturnType<SubmitSchema, SubmitSchema>;
 
@@ -24,20 +25,22 @@ const form = async (event: APIGatewayProxyEvent) => {
     parsedForm = new URLSearchParams(event.body ?? "");
   } catch (error: any) {
     console.error("Failed to parse form data", error);
-    return formatJSONResponse({
+    return formatJSONError({
       error: true,
       message: "Failed to parse form data",
       details: error.message,
+      body: event.body,
     });
   }
 
   validatedForm = submitSchema.safeParse(Object.fromEntries(parsedForm));
   if (!validatedForm.success) {
     console.error("Failed to validate form data", validatedForm.error);
-    return formatJSONResponse({
+    return formatJSONError({
       error: true,
       message: "Failed to validate form data",
       details: validatedForm.error.errors,
+      body: event.body,
     });
   }
 
@@ -57,7 +60,7 @@ const form = async (event: APIGatewayProxyEvent) => {
     existingItem = await dynamoClient.send(getCommand);
   } catch (error: any) {
     console.error("Failed to get item from DynamoDB", error);
-    return formatJSONResponse({
+    return formatJSONError({
       error: true,
       message: "Failed to get item from DynamoDB",
       details: error.message,
@@ -71,11 +74,11 @@ const form = async (event: APIGatewayProxyEvent) => {
       existingItem.Item.name.S === validatedForm.data.name &&
       parseInt(existingItem.Item.adults.N!) === validatedForm.data.adults &&
       parseInt(existingItem.Item.children.N!) === validatedForm.data.children &&
-      existingItem.Item.anythingElse.S === validatedForm.data.anythingElse
+      existingItem.Item.anythingElse.S === validatedForm.data.anythingElse &&
+      existingItem.Item.bellTent.BOOL === validatedForm.data.bellTent &&
+      existingItem.Item.davidMascot.BOOL === validatedForm.data.davidMascot
     ) {
-      return formatJSONResponse({
-        message: "No changes detected",
-      });
+      return formatJSONRedirect(`${origin}/no-change`);
     }
 
     const updateCommand = new UpdateItemCommand({
@@ -84,7 +87,7 @@ const form = async (event: APIGatewayProxyEvent) => {
         email: { S: validatedForm.data.email },
       },
       UpdateExpression:
-        "SET #name = :name, adults = :adults, children = :children, anythingElse = :anythingElse, history = list_append(history, :history)",
+        "SET #name = :name, adults = :adults, children = :children, anythingElse = :anythingElse, bellTent = :bellTent, davidMascot = :davidMascot, history = list_append(history, :history)",
       ExpressionAttributeNames: {
         "#name": "name",
       },
@@ -93,6 +96,8 @@ const form = async (event: APIGatewayProxyEvent) => {
         ":adults": { N: validatedForm.data.adults?.toString() },
         ":children": { N: validatedForm.data.children?.toString() },
         ":anythingElse": { S: validatedForm.data.anythingElse },
+        ":bellTent": { BOOL: validatedForm.data.bellTent },
+        ":davidMascot": { BOOL: validatedForm.data.davidMascot },
         ":history": {
           L: [
             {
@@ -101,6 +106,8 @@ const form = async (event: APIGatewayProxyEvent) => {
                 adults: { N: existingItem.Item.adults.N! },
                 children: { N: existingItem.Item.children.N! },
                 anythingElse: { S: existingItem.Item.anythingElse.S! },
+                bellTent: { BOOL: existingItem.Item.bellTent.BOOL! },
+                davidMascot: { BOOL: existingItem.Item.davidMascot.BOOL! },
                 replacedAt: { S: new Date().toISOString() },
               },
             },
@@ -113,7 +120,7 @@ const form = async (event: APIGatewayProxyEvent) => {
       await dynamoClient.send(updateCommand);
     } catch (error: any) {
       console.error("Failed to update item in DynamoDB", error);
-      return formatJSONResponse({
+      return formatJSONError({
         error: true,
         message: "Failed to update item in DynamoDB",
         details: error.message,
@@ -128,6 +135,8 @@ const form = async (event: APIGatewayProxyEvent) => {
         adults: { N: validatedForm.data.adults.toString() },
         children: { N: validatedForm.data.children.toString() },
         anythingElse: { S: validatedForm.data.anythingElse },
+        bellTent: { BOOL: validatedForm.data.bellTent },
+        davidMascot: { BOOL: validatedForm.data.davidMascot },
         history: {
           L: [],
         },
@@ -138,10 +147,12 @@ const form = async (event: APIGatewayProxyEvent) => {
       await dynamoClient.send(putCommand);
     } catch (error: any) {
       console.error("Failed to put item in DynamoDB", error);
-      return formatJSONResponse({
-        error: true,
-        message: "Failed to put item in DynamoDB",
-        details: error.message,
+      return formatJSONError({
+        data: {
+          error: true,
+          message: "Failed to put item in DynamoDB",
+          details: error.message,
+        },
       });
     }
   }
@@ -170,10 +181,7 @@ const form = async (event: APIGatewayProxyEvent) => {
   /*
    * Response
    */
-  return formatJSONResponse({
-    message: "Form submitted",
-    docTitle: doc.title,
-  });
+  return formatJSONRedirect(`${origin}/success`);
 };
 
 export const main = middyfy(form);

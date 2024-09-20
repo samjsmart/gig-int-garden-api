@@ -1,5 +1,4 @@
 import { z } from "zod";
-import submit from ".";
 
 export const submitSchema = z
   .object({
@@ -7,17 +6,16 @@ export const submitSchema = z
     adults: z.coerce.number().int(),
     children: z.coerce.number().int(),
     email: z.string().email(),
-    "anything-else": z.string(),
+    anythingElse: z.string(),
+    bellTent: z.preprocess((val) => val === "on", z.boolean()).default(false),
+    davidMascot: z
+      .preprocess((val) => val === "on", z.boolean())
+      .default(false),
   })
-  .transform((data) => {
-    const { "anything-else": anythingElse, ...rest } = data;
-
-    return {
-      ...rest,
-      anythingElse: data["anything-else"],
-      submittedAt: new Date().toISOString(),
-    };
-  });
+  .transform((data) => ({
+    ...data,
+    submittedAt: new Date().toISOString(),
+  }));
 export type SubmitSchema = z.infer<typeof submitSchema>;
 
 export type GSheetFormSchema = SubmitSchema & {
