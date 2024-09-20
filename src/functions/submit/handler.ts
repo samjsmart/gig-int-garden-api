@@ -78,7 +78,7 @@ const form = async (event: APIGatewayProxyEvent) => {
       existingItem.Item.bellTent.BOOL === validatedForm.data.bellTent &&
       existingItem.Item.davidMascot.BOOL === validatedForm.data.davidMascot
     ) {
-      return formatJSONRedirect(`${origin}/no-change`);
+      return formatJSONRedirect(`${origin}/contact/no-change`);
     }
 
     const updateCommand = new UpdateItemCommand({
@@ -181,7 +181,7 @@ const form = async (event: APIGatewayProxyEvent) => {
   /*
    * Response
    */
-  return formatJSONRedirect(`${origin}/success`);
+  return formatJSONRedirect(`${origin}/contact/success`);
 };
 
 export const main = middyfy(form);
