@@ -21,3 +21,14 @@ export type SubmitSchema = z.infer<typeof submitSchema>;
 export type GSheetFormSchema = SubmitSchema & {
   paid: string;
 };
+
+export type ErrorAware<T> =
+  | {
+      error: false;
+      data: T;
+    }
+  | {
+      error: true;
+      message: string;
+      details?: string;
+    };

@@ -17,7 +17,8 @@ const serverlessConfiguration: AWS = {
       GOOGLE_SA_EMAIL: "${ssm:/gitg/gsheet/email}",
       GOOGLE_SA_KEY: "${ssm:/gitg/gsheet/key}",
       GOOGLE_SHEET_ID: "1O5dUpi6eNKIR6yI8ErjLZLKBmZcfxebV-DmItxr56Sc",
-      SNS_TOPIC_ARN: "arn:aws:sns:eu-west-1:713471551833:giginthegarden-form-submissions",
+      SNS_TOPIC_ARN:
+        "arn:aws:sns:eu-west-1:713471551833:giginthegarden-form-submissions",
     },
     iamRoleStatements: [
       {
@@ -36,6 +37,11 @@ const serverlessConfiguration: AWS = {
         Effect: "Allow",
         Action: ["sns:Publish"],
         Resource: "${self:provider.environment.SNS_TOPIC_ARN}",
+      },
+      {
+        Effect: "Allow",
+        Action: ["ses:SendEmail", "ses:SendRawEmail"],
+        Resource: "*",
       },
     ],
   },
