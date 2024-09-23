@@ -279,7 +279,7 @@ const form = async (event: APIGatewayProxyEvent) => {
   const dynamoResult = await updateDynamoDB(validateResult.data);
   if (dynamoResult.error) {
     if (dynamoResult.message === "No change in form data")
-      return formatJSONRedirect(`${origin}/register/no-change`);
+      return formatJSONRedirect(`${origin}/register/success`);
     else return formatJSONError(dynamoResult);
   }
 
